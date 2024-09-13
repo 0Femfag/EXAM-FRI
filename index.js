@@ -111,11 +111,12 @@ module.exports = { createnewUser, loginUser };
 
 const postModel = require("../models/post");
 const makePost = async (req, res) => {
-  const body = req.body;
-  const newPost = new postModel(body);
+  const { creatorId, ...others } = req.body;
+  const { id } = req.user;
+  const newPost = new postModel({ ...others, creatorId: id });
   try {
     await newPost.save();
-    res.json(newPost);
+    res.json({ message: "Post created successfully" });
   } catch (error) {
     console.log(error.message);
     res.json({ message: error.message });
@@ -124,7 +125,10 @@ const makePost = async (req, res) => {
 
 const getallPost = async (req, res) => {
   try {
-    const allPost = await postModel.find();
+    const allPost = await postModel
+      .find()
+      .populate("comments")
+      .populate("postId");
     res.json(allPost);
   } catch (error) {
     console.log(error.message);
@@ -133,10 +137,12 @@ const getallPost = async (req, res) => {
 };
 
 const getonePost = async (req, res) => {
-  const { id } = req.params;
-  console.log(id);
+  const { postId } = req.params;
   try {
-    const getOne = await postModel.findById(id);
+    const getOne = await postModel
+      .findById(postId)
+      .populate("creatorId")
+      .populate("commentorsId");
     res.json(getOne);
   } catch (error) {
     console.log(error.message);
@@ -174,4 +180,66 @@ const likePost = async (req, res) => {
   }
 };
 
-module.exports = { createPost, likePost };
+module.exports = { likePost };
+
+const mongoose = require("mongoose");
+const commentSchema = new mongoose.Schema(
+  {
+    comment: {
+      type: String,
+      required: true,
+    },
+    postId: {
+      type: mongoose.Types.ObjectId,
+      required: true,
+      ref: "POST",
+    },
+    commentorsId: {
+      type: mongoose.Types.ObjectId,
+      reuired: true,
+      ref: "LUMINARY",
+    },
+  },
+  { timestamps: true }
+);
+const commentModel = mongoose.model("COMMENT", commentSchema);
+module.exports = commentModel;
+
+const commentModel = require("../models/comment");
+const postModel = require("../models/post");
+
+const createComment = async (req, res) => {
+  const { comment, postId } = req.body;
+  const { id } = req.user;
+  try {
+    const newestComment = new commentModel({
+      comment,
+      commentorsId: id,
+      postId,
+    });
+    const savedComment = await newestComment.save();
+    await postModel.findByIdAndUpdate(postId, {
+      $push: { comments: savedComment.id },
+    });
+    res.json({ message: "Comment made successfully" });
+  } catch (error) {
+    console.log(error.message);
+    res.json({ message: error.message });
+  }
+};
+
+const getallComment = async (req, res) => {
+  const { commentId } = req.query;
+  try {
+    const allComment = await commentModel
+      .findById(commentId)
+      .populate("postId")
+      .populate("commentorsId");
+    res.json(allComment);
+  } catch (error) {
+    console.log(error.message);
+    res.json({ message: error.message });
+  }
+};
+
+module.exports = { createComment, getallComment };
