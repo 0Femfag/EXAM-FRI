@@ -196,7 +196,7 @@ const commentSchema = new mongoose.Schema(
     },
     commentorsId: {
       type: mongoose.Types.ObjectId,
-      reuired: true,
+      required: true,
       ref: "LUMINARY",
     },
   },
