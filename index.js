@@ -84,7 +84,8 @@ const postModel = mongoose.model("POST", newSchema);
 module.exports = postModel;
 
 
-const userModel = require("../models/userss");
+const newuserModel = require("../models/newuser");
+const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 const createnewUser = async (req, res) => {
@@ -171,8 +172,11 @@ const logoutUser = async (req, res) => {
   }
 };
 
-module.exports = { createnewUser, loginUser };
+module.exports = { createnewUser, loginUser, logoutUser, OuathRegister };
 
+
+const newuserModel = require("../models/newuser");
+const jwt = require("jsonwebtoken");
 
 const deleteUser = async (req, res) => {
   const { id } = req.user;
@@ -186,6 +190,8 @@ const deleteUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+module.exports = {deleteUser};
 
 
 const postModel = require("../models/post");
