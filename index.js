@@ -105,7 +105,7 @@ const createnewUser = async (req, res) => {
 };
 
 
-const OuathRegister = async (req, res) => {
+const OauthRegister = async (req, res) => {
   const { username, email, gender } = req.body;
   try {
     const findOne = await newuserModel.findOne({ email });
@@ -172,7 +172,7 @@ const logoutUser = async (req, res) => {
   }
 };
 
-module.exports = { createnewUser, loginUser, logoutUser, OuathRegister };
+module.exports = { createnewUser, OauthRegister,  loginUser, logoutUser };
 
 
 const newuserModel = require("../models/newuser");
