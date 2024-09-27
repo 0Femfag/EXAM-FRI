@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const userSchema = new mongoose.Schema(
+const newuserSchema = new mongoose.Schema(
   {
     username: {
       type: String,
@@ -13,29 +13,34 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
+    },
+    credentialAccount: {
+      type: Boolean,
+      default: true,
+    },
+    creatorId: {
+      type: mongoose.Types.ObjectId,
       required: true,
     },
     gender: {
       type: String,
       enum: ["Male", "Female"],
     },
-    age: {
-      type: Number,
-    },
-    creatorId: {
-      type: mongoose.Types.ObjectId,
-      required: true,
-    },
     details: {
       address: String,
       postcode: Number,
+    },
+    role: {
+      type: String,
+      enum: ["Basic", "Admin", "SuperAdmin"],
+      default: "Basic",
     },
   },
   { timestamps: true }
 );
 
-const userModel = mongoose.model("LUMINARY", userSchema);
-module.exports = userModel;
+const newuserModel = mongoose.model("LUMINARY", newuserSchema);
+module.exports = newuserModel;
 
 const mongoose = require("mongoose");
 const newSchema = new mongoose.Schema(
@@ -58,10 +63,18 @@ const newSchema = new mongoose.Schema(
     },
     creatorId: {
       type: mongoose.Types.ObjectId,
+      required: true,
+      ref: "LUMINARY",
     },
     likes: {
       type: [mongoose.Types.ObjectId],
       default: [],
+      ref: "LUMINARY",
+    },
+    comments: {
+      type: [mongoose.Types.ObjectId],
+      default: [],
+      ref: "COMMENT",
     },
   },
   { timestamps: true }
@@ -70,44 +83,110 @@ const newSchema = new mongoose.Schema(
 const postModel = mongoose.model("POST", newSchema);
 module.exports = postModel;
 
+
 const userModel = require("../models/userss");
 const bcrypt = require("bcryptjs");
 
 const createnewUser = async (req, res) => {
-  const { password, ...others } = req.body;
+  const { password, role, ...others } = req.body;
   const salt = bcrypt.genSaltSync(10);
   const hashedPassword = bcrypt.hashSync(password, salt);
-  console.log(hashedPassword);
-  const newUser = new userModel({ password: hashedPassword, ...others });
+  const newUser = await newuserModel({
+    password: hashedPassword,
+    ...others,
+  });
   try {
     await newUser.save();
-    res.json({ message: "user created successfully" });
+    res.status(201).json({ message: "Account created successfully" });
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: "user already exist" });
+    res.status(504).json({ message: error.message });
   }
 };
+
+
+const OuathRegister = async (req, res) => {
+  const { username, email, gender } = req.body;
+  try {
+    const findOne = await newuserModel.findOne({ email });
+    if (findOne && findOne.credentialAccount) {
+      return res.status(404).json({ message: "illegal parameter" });
+    }
+    if (findOne) {
+      const aboutUser = { id: findOne.id, role: findOne.role };
+      const token = jwt.sign(aboutUser, process.env.JWT_SECRET);
+      return res
+        .cookie("user_token", token)
+        .status(200)
+        .json({ message: "Login successful" });
+    }
+    const newUser = new newuserModel({
+      username,
+      email,
+      gender,
+      credentialAccount: false,
+    });
+    const savedUser = await newUser.save();
+    const aboutUser = { id: savedUser.id, role: savedUser.role };
+    const token = jwt.sign(aboutUser, process.env.JWT_SECRET);
+    return res
+      .cookie("user_token", token)
+      .status(201)
+      .json({ message: "Created successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "something went wrong" });
+  }
+};
+
 
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const findUser = await userModel.findOne({ email });
-    if (!findUser) {
-      return res.json({ message: "user not found" });
+    const userInfo = await newuserModel.findOne({ email });
+    if (!userInfo) {
+      return res.status(404).json({ message: "User doesn't exist" });
     }
-    const verify = bcrypt.compareSync(password, findUser.password);
-    console.log(verify);
+    const verify = bcrypt.compareSync(password, userInfo.password);
     if (!verify) {
-      return res.json({ message: "pass doesn't match" });
+      return res.status(401).json({ message: "Password doesn't match" });
     }
-    res.json(findUser);
+    const aboutUser = { id: userInfo.id, role: userInfo.role };
+    const token = jwt.sign(aboutUser, process.env.JWT_SECRET);
+    return res
+      .cookie("user_token", token)
+      .status(202)
+      .json({ message: "user logged in succesfully" });
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: error.message });
+    res.status(505).json({ message: error.message });
+  }
+};
+
+const logoutUser = async (req, res) => {
+  try {
+    res
+      .clearCookie("user_token")
+      .status(202)
+      .json({ message: "user logged out succesfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = { createnewUser, loginUser };
+
+
+const deleteUser = async (req, res) => {
+  const { id } = req.user;
+  try {
+    await newuserModel.findByIdAndDelete(id);
+    res
+      .clearCookie("user_token")
+      .status(200)
+      .json({ message: "User deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
 const postModel = require("../models/post");
 const makePost = async (req, res) => {
@@ -116,12 +195,12 @@ const makePost = async (req, res) => {
   const newPost = new postModel({ ...others, creatorId: id });
   try {
     await newPost.save();
-    res.json({ message: "Post created successfully" });
+    res.status(200).json({ message: "Post created successfully" });
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: error.message });
+    res.status(503).json({ message: error.message });
   }
 };
+
 
 const getallPost = async (req, res) => {
   try {
@@ -129,10 +208,9 @@ const getallPost = async (req, res) => {
       .find()
       .populate("comments")
       .populate("postId");
-    res.json(allPost);
+    res.status(200).json(allPost);
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -143,44 +221,60 @@ const getonePost = async (req, res) => {
       .findById(postId)
       .populate("creatorId")
       .populate("commentorsId");
-    res.json(getOne);
+    res.status(200).json(getOne);
   } catch (error) {
     console.log(error.message);
-    res.json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = { makePost, getallPost, getonePost };
 
-const likeModel = require("../models/likes");
 
+const likeModel = require("../models/likes");
 const likePost = async (req, res) => {
   const { id, userId } = req.body;
   try {
     const thePost = await likeModel.findById(id);
     if (!thePost) {
-      return res.json({ message: "Such post doesn't exist" });
+      return res.status(404).json({ message: "Such post doesn't exist" });
     }
     const checkuserinArray = thePost.likes.includes(userId);
-    console.log(checkuserinArray);
     if (!checkuserinArray) {
       thePost.likes.push(userId);
-    } else {
-      const index = thePost.likes.indexOf(userId);
-      thePost.likes.splice(index, 1);
     }
     await likeModel.findByIdAndUpdate(
       id,
       { likes: thePost.likes },
       { new: true }
     );
-    res.json({ message: "You've like this post" });
+    return res.status(202).json({ message: "You've like this post" });
   } catch (error) {
-    res.json({ message: error.message });
+    res.status(504).json({ message: error.message });
   }
 };
 
-module.exports = { likePost };
+const dislikePost = async (req, res) => {
+  const { id, userId } = req.body;
+  try {
+    const thePost = await likeModel.findById(id);
+    const checkuserinArray = thePost.likes.includes(userId);
+    if (checkuserinArray) {
+      const index = thePost.likes.indexOf(userId);
+      getPost.likes.splice(index, 1);
+    }
+    await likeModel.findByIdAndUpdate(
+      id,
+      { likes: thePost.likes },
+      { new: true }
+    );
+    return res.status(202).json({ message: "You've dislike this post" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { likePost, dislikepost };
 
 const mongoose = require("mongoose");
 const commentSchema = new mongoose.Schema(
@@ -205,6 +299,7 @@ const commentSchema = new mongoose.Schema(
 const commentModel = mongoose.model("COMMENT", commentSchema);
 module.exports = commentModel;
 
+
 const commentModel = require("../models/comment");
 const postModel = require("../models/post");
 
@@ -221,10 +316,9 @@ const createComment = async (req, res) => {
     await postModel.findByIdAndUpdate(postId, {
       $push: { comments: savedComment.id },
     });
-    res.json({ message: "Comment made successfully" });
+    return res.status(200).json({ message: "Comment made successfully" });
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -235,11 +329,11 @@ const getallComment = async (req, res) => {
       .findById(commentId)
       .populate("postId")
       .populate("commentorsId");
-    res.json(allComment);
+    return res.satus(200).json(allComment);
   } catch (error) {
-    console.log(error.message);
-    res.json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = { createComment, getallComment };
+
